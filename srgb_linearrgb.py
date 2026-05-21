@@ -1,25 +1,6 @@
 import cv2
 import numpy as np
-
-
-# ============================================================
-# CONVERSION FUNCTIONS
-# ============================================================
-
-def srgb_to_linear(img):
-
-    img = img.astype(np.float32) / 255.0
-
-    return np.power(img, 2.2)
-
-
-def linear_to_srgb(img):
-
-    img = np.clip(img, 0, 1)
-
-    img = np.power(img, 1.0 / 2.2)
-
-    return (img * 255).astype(np.uint8)
+import matplotlib.pyplot as plt
 
 
 # ============================================================
@@ -33,145 +14,229 @@ img = cv2.imread(
 if img is None:
     raise ValueError("Could not load image")
 
-
-h, w = img.shape[:2]
-
-
-# ============================================================
-# CREATE SOFT RED CIRCLE
-# ============================================================
-
-overlay = np.zeros_like(img)
-
-mask = np.zeros((h, w), dtype=np.uint8)
-
-center = (w // 2, h // 2)
-
-radius = 180
-
-cv2.circle(
-    overlay,
-    center,
-    radius,
-    (0, 0, 255),
-    -1
+img = cv2.cvtColor(
+    img,
+    cv2.COLOR_BGR2RGB
 )
 
-cv2.circle(
-    mask,
-    center,
-    radius,
-    255,
-    -1
-)
-
-# soft alpha edges
-mask = cv2.GaussianBlur(
-    mask,
-    (101, 101),
-    0
-)
-
-alpha = mask.astype(np.float32) / 255.0
-
-alpha_3 = cv2.merge([
-    alpha,
-    alpha,
-    alpha
-])
+img = img.astype(np.float32) / 255.0
 
 
 # ============================================================
-# WRONG: sRGB BLENDING
+# SRGB <-> LINEAR FUNCTIONS
 # ============================================================
 
-img_srgb = img.astype(np.float32) / 255.0
+def srgb_to_linear(img):
 
-overlay_srgb = overlay.astype(np.float32) / 255.0
+    return np.power(img, 2.2)
 
-blend_srgb = (
 
-    alpha_3 * overlay_srgb +
+def linear_to_srgb(img):
 
-    (1.0 - alpha_3) * img_srgb
+    img = np.clip(img, 0, 1)
+
+    return np.power(img, 1.0 / 2.2)
+
+
+# ============================================================
+# CONVERT TO LINEAR
+# ============================================================
+
+linear_img = srgb_to_linear(img)
+
+
+# ============================================================
+# BRIGHTNESS SCALING
+# ============================================================
+
+# simulate doubling light intensity
+
+linear_scaled = np.clip(
+    linear_img * 2.0,
+    0,
+    1
 )
 
-blend_srgb = (
-    blend_srgb * 255
-).astype(np.uint8)
-
-
-# ============================================================
-# CORRECT: LINEAR RGB BLENDING
-# ============================================================
-
-img_linear = srgb_to_linear(img)
-
-overlay_linear = srgb_to_linear(overlay)
-
-blend_linear = (
-
-    alpha_3 * overlay_linear +
-
-    (1.0 - alpha_3) * img_linear
+# convert back for display
+linear_scaled_display = linear_to_srgb(
+    linear_scaled
 )
 
-blend_linear = linear_to_srgb(
-    blend_linear
+# WRONG WAY:
+# scaling directly in srgb
+
+srgb_scaled = np.clip(
+    img * 2.0,
+    0,
+    1
 )
 
 
 # ============================================================
-# SIDE-BY-SIDE COMPARISON
+# PICK SAMPLE PIXEL
+# ============================================================
+
+y = img.shape[0] // 2
+x = img.shape[1] // 2
+
+srgb_pixel = img[y, x]
+
+linear_pixel = linear_img[y, x]
+
+scaled_srgb_pixel = srgb_scaled[y, x]
+
+scaled_linear_pixel = linear_scaled_display[y, x]
+
+
+print("\n================ PIXEL ANALYSIS ================\n")
+
+print(f"Pixel Location: ({x}, {y})\n")
+
+print("Original sRGB pixel:")
+print(srgb_pixel)
+
+print("\nConverted Linear RGB pixel:")
+print(linear_pixel)
+
+print("\nScaled directly in sRGB:")
+print(scaled_srgb_pixel)
+
+print("\nScaled in Linear RGB then converted back:")
+print(scaled_linear_pixel)
+
+
+# ============================================================
+# HISTOGRAMS
+# ============================================================
+
+srgb_gray = np.mean(img, axis=2)
+
+linear_gray = np.mean(linear_img, axis=2)
+
+plt.figure(figsize=(12,6))
+
+plt.hist(
+    srgb_gray.flatten(),
+    bins=100,
+    alpha=0.6,
+    label="sRGB"
+)
+
+plt.hist(
+    linear_gray.flatten(),
+    bins=100,
+    alpha=0.6,
+    label="Linear RGB"
+)
+
+plt.title("Intensity Distribution")
+
+plt.xlabel("Intensity")
+
+plt.ylabel("Pixel Count")
+
+plt.legend()
+
+plt.savefig(
+    "histogram_comparison.png"
+)
+
+print("\nSaved: histogram_comparison.png")
+
+
+# ============================================================
+# INTENSITY CURVE VISUALIZATION
+# ============================================================
+
+x_vals = np.linspace(0, 1, 1000)
+
+srgb_curve = np.power(
+    x_vals,
+    1/2.2
+)
+
+linear_curve = x_vals
+
+plt.figure(figsize=(10,6))
+
+plt.plot(
+    x_vals,
+    linear_curve,
+    label="Linear RGB"
+)
+
+plt.plot(
+    x_vals,
+    srgb_curve,
+    label="sRGB Gamma Curve"
+)
+
+plt.title("Linear RGB vs sRGB")
+
+plt.xlabel("Physical Light Intensity")
+
+plt.ylabel("Stored Pixel Value")
+
+plt.legend()
+
+plt.grid(True)
+
+plt.savefig(
+    "gamma_curve.png"
+)
+
+print("Saved: gamma_curve.png")
+
+
+# ============================================================
+# IMAGE COMPARISONS
 # ============================================================
 
 comparison = np.hstack([
-    blend_srgb,
-    blend_linear
+
+    (img * 255).astype(np.uint8),
+
+    (srgb_scaled * 255).astype(np.uint8),
+
+    (linear_scaled_display * 255).astype(np.uint8)
+
 ])
 
-# labels
-cv2.putText(
+comparison = cv2.cvtColor(
     comparison,
-    "sRGB Blend (WRONG)",
-    (50, 60),
-    cv2.FONT_HERSHEY_SIMPLEX,
-    1.2,
-    (255,255,255),
-    3
-)
-
-cv2.putText(
-    comparison,
-    "Linear RGB Blend (CORRECT)",
-    (w + 50, 60),
-    cv2.FONT_HERSHEY_SIMPLEX,
-    1.2,
-    (255,255,255),
-    3
-)
-
-
-# ============================================================
-# SAVE RESULTS
-# ============================================================
-
-cv2.imwrite(
-    "blend_srgb_wrong.png",
-    blend_srgb
+    cv2.COLOR_RGB2BGR
 )
 
 cv2.imwrite(
-    "blend_linear_correct.png",
-    blend_linear
-)
-
-cv2.imwrite(
-    "blend_comparison.png",
+    "brightness_scaling_comparison.png",
     comparison
 )
 
-print("Saved:")
-print(" - blend_srgb_wrong.png")
-print(" - blend_linear_correct.png")
-print(" - blend_comparison.png")
+print("Saved: brightness_scaling_comparison.png")
+
+
+# ============================================================
+# VISUALIZATION WITH LABELS
+# ============================================================
+
+fig, axs = plt.subplots(1,3, figsize=(18,6))
+
+axs[0].imshow(img)
+axs[0].set_title("Original sRGB")
+
+axs[1].imshow(srgb_scaled)
+axs[1].set_title("Scaled Directly in sRGB")
+
+axs[2].imshow(linear_scaled_display)
+axs[2].set_title("Scaled in Linear RGB")
+
+for ax in axs:
+    ax.axis("off")
+
+plt.tight_layout()
+
+plt.savefig(
+    "visual_comparison.png"
+)
+
+print("Saved: visual_comparison.png")
