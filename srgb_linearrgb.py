@@ -30,12 +30,16 @@ def srgb_to_linear(img):
 
     return np.power(img, 2.2)
 
+# gamma enconding, almost logarithmic compression of intensity values
+
 
 def linear_to_srgb(img):
 
     img = np.clip(img, 0, 1)
 
     return np.power(img, 1.0 / 2.2)
+
+# inverse of the above one
 
 
 # ============================================================
@@ -70,6 +74,7 @@ srgb_scaled = np.clip(
     0,
     1
 )
+# this apparently scales the gamma compressed values rather than the phyiscal light intensity, basically doubling a non-linear quantitiy
 
 
 # ============================================================
